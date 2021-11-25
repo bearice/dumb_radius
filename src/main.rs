@@ -67,6 +67,22 @@ async fn main() {
                 .env("DUMB_RADIUS_KEY")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("pwd_len")
+                .short("l")
+                .long("len")
+                .help("password length")
+                .default_value("32")
+                .validator(|s| {
+                    if s.parse::<usize>().ok().filter(|x| *x > 8).is_some() {
+                        Ok(())
+                    } else {
+                        Err("password length must be a number greater than 8".to_string())
+                    }
+                })
+                .env("DUMB_RADIUS_KEY")
+                .takes_value(true),
+        )
         .subcommand(
             App::new("genpwd")
                 .about("generate passwords for testing")
@@ -86,23 +102,21 @@ async fn main() {
                 ),
         )
         .get_matches();
+    let pwd_len = args.value_of("pwd_len").unwrap().parse::<usize>().unwrap();
     let pwd_key = args.value_of("pwd_key").unwrap();
     let hmac = HmacSha256::new_from_slice(pwd_key.as_bytes()).expect("HMAC init");
     if let Some(m) = args.subcommand_matches("genpwd") {
         let user = m.value_of("user").expect("user not defined");
         let expires = m.value_of("expires").and_then(parse_duration);
         let ts = get_ts(expires);
-        let pwd = genpwd(hmac, user, ts);
+        let pwd = genpwd(hmac, pwd_len, user, ts);
         println!("User: {}\r\nPassword: {}", user, pwd);
         return;
     }
     let log_level = args.value_of("log-level").unwrap_or("info");
     env_logger::init_from_env(env_logger::Env::default().default_filter_or(log_level));
 
-    let bind = args.value_of("bind").unwrap();
-    let port = args.value_of("port").unwrap().parse().unwrap();
-    let secret = args.value_of("secret").unwrap().to_string();
-    let handler = MyRequestHandler { hmac };
+    let handler = MyRequestHandler { hmac, len: pwd_len };
     let secret = MySecretProvider { secret };
 
     // start UDP listening
@@ -126,6 +140,7 @@ async fn main() {
 
 struct MyRequestHandler {
     hmac: HmacSha256,
+    len: usize,
 }
 
 #[async_trait]
@@ -137,14 +152,14 @@ impl RequestHandler<(), io::Error> for MyRequestHandler {
     ) -> Result<(), io::Error> {
         let req_packet = req.get_packet();
 
-        fn check(hmac: HmacSha256, req: &Packet) -> Option<bool> {
+        fn check(hmac: HmacSha256, len: usize, req: &Packet) -> Option<bool> {
             let user = rfc2865::lookup_user_name(req)?.ok()?;
             let password = String::from_utf8(rfc2865::lookup_user_password(req)?.ok()?).ok()?;
 
-            Some(verify_pwd(hmac, &user, &password))
+            Some(verify_pwd(hmac, len, &user, &password))
         }
 
-        let code = if Some(true) == check(self.hmac.clone(), req_packet) {
+        let code = if Some(true) == check(self.hmac.clone(), self.len, req_packet) {
             Code::AccessAccept
         } else {
             Code::AccessReject
@@ -195,21 +210,21 @@ fn parse_duration(s: &str) -> Option<Duration> {
     Some(Duration::from_secs(val))
 }
 
-fn genpwd(mut hmac: HmacSha256, user: &str, ts: u64) -> String {
+fn genpwd(mut hmac: HmacSha256, len: usize, user: &str, ts: u64) -> String {
     let rawpwd = format!("{:08x}{}", ts, user);
     hmac.update(rawpwd.as_bytes());
     let hash = hmac.finalize().into_bytes();
     let mut pwd = format!("{:08x}{}", ts, base64::encode(hash));
-    pwd.truncate(PWDLEN);
+    pwd.truncate(len);
     pwd
 }
 
-fn verify_pwd(hmac: HmacSha256, user: &str, pwd: &str) -> bool {
-    let raw = if pwd.len() == PWDLEN { Some(pwd) } else { None };
+fn verify_pwd(hmac: HmacSha256, len: usize, user: &str, pwd: &str) -> bool {
+    let raw = if pwd.len() == len { Some(pwd) } else { None };
     let ts = raw.and_then(|pwd| u64::from_str_radix(&pwd[0..8], 16).ok());
     let ts = ts.filter(|ts| *ts > get_ts(None));
     let chk = ts
-        .map(move |ts| genpwd(hmac, user, ts))
+        .map(move |ts| genpwd(hmac, len, user, ts))
         .filter(|chk| pwd == chk);
     chk.is_some()
 }
