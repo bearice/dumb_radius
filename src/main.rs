@@ -87,7 +87,7 @@ async fn main() {
                         Err("password length must be a number greater than 8".to_string())
                     }
                 })
-                .env("DUMB_RADIUS_KEY")
+                .env("DUMB_RADIUS_PWD_LEN")
                 .takes_value(true),
         )
         .subcommand(
