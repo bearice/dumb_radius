@@ -1,4 +1,4 @@
-# DumpRadius
+# Dumb radius server
 
 A radius server that has not user database but checks against username with a hmac hash.
 
