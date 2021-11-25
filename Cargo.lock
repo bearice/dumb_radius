@@ -150,7 +150,7 @@ dependencies = [
 
 [[package]]
 name = "dumb_radius"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "base64",
