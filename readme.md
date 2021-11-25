@@ -18,7 +18,7 @@ OPTIONS:
     -b, --bind <bind>        radius bind address [env: DUMB_RADIUS_BIND=]  [default: 0.0.0.0]
     -p, --port <port>        radius port [env: DUMB_RADIUS_PORT=]  [default: 1812]
     -k, --key <pwd_key>      password key [env: DUMB_RADIUS_KEY=]  [default: whosyourdaddy]
-    -l, --len <pwd_len>      password length [env: DUMB_RADIUS_KEY=]  [default: 32]
+    -l, --len <pwd_len>      password length [env: DUMB_RADIUS_PWD_LEN=]  [default: 32]
     -s, --secret <secret>    radius secret [env: DUMB_RADIUS_SECRET=]  [default: 12345678]
 
 SUBCOMMANDS:
