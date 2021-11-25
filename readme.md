@@ -1,6 +1,6 @@
 # Dumb radius server
 
-A radius server that has not user database but checks against username with a hmac hash.
+A radius server that has no user database but checks against username with a hmac hash.
 
 A.K.A ` password = ts + truncate(hmac(key+ts+username)) `
 
