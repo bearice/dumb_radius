@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{io, process};
 
@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use clap::{App, Arg};
 use hmac::*;
 use log::info;
+use radius::client::Client;
 use radius::core::packet::Packet;
 use sha2::Sha256;
 use tokio::net::UdpSocket;
@@ -17,7 +18,6 @@ use radius::core::rfc2865;
 use radius::server::{RequestHandler, SecretProvider, SecretProviderError, Server};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const PWDLEN: usize = 32;
 type HmacSha256 = Hmac<Sha256>;
 
 #[tokio::main]
@@ -30,6 +30,13 @@ async fn main() {
                 .long("bind")
                 .help("radius bind address")
                 .default_value("0.0.0.0")
+                .validator(|s| {
+                    if s.parse::<IpAddr>().is_ok() {
+                        Ok(())
+                    } else {
+                        Err("invalid bind address".to_string())
+                    }
+                })
                 .env("DUMB_RADIUS_BIND")
                 .takes_value(true),
         )
@@ -101,10 +108,42 @@ async fn main() {
                         .takes_value(true),
                 ),
         )
+        .subcommand(
+            App::new("test")
+                .about("test remote server")
+                .arg(
+                    Arg::with_name("user")
+                        .short("u")
+                        .help("user name")
+                        .default_value("test")
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("pass")
+                        .short("P")
+                        .help("password (default: auto generate)")
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("remote")
+                        .short("r")
+                        .help("remote server")
+                        .default_value("127.0.0.1:1812")
+                        .takes_value(true),
+                ),
+        )
         .get_matches();
+
+    let log_level = args.value_of("log-level").unwrap_or("info");
+    env_logger::init_from_env(env_logger::Env::default().default_filter_or(log_level));
+
     let pwd_len = args.value_of("pwd_len").unwrap().parse::<usize>().unwrap();
     let pwd_key = args.value_of("pwd_key").unwrap();
     let hmac = HmacSha256::new_from_slice(pwd_key.as_bytes()).expect("HMAC init");
+    let bind = args.value_of("bind").unwrap();
+    let port = args.value_of("port").unwrap().parse().unwrap();
+    let secret = args.value_of("secret").unwrap().to_string();
+
     if let Some(m) = args.subcommand_matches("genpwd") {
         let user = m.value_of("user").expect("user not defined");
         let expires = m.value_of("expires").and_then(parse_duration);
@@ -113,8 +152,29 @@ async fn main() {
         println!("User: {}\r\nPassword: {}", user, pwd);
         return;
     }
-    let log_level = args.value_of("log-level").unwrap_or("info");
-    env_logger::init_from_env(env_logger::Env::default().default_filter_or(log_level));
+
+    if let Some(m) = args.subcommand_matches("test") {
+        let user = m.value_of("user").expect("user not defined");
+        let password = m
+            .value_of("pass")
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| {
+                genpwd(hmac, pwd_len, user, get_ts(Some(Duration::from_secs(3600))))
+            });
+
+        println!("User: {}\r\nPassword: {}", user, password);
+
+        let remote_addr: SocketAddr = m.value_of("remote").unwrap().parse().unwrap();
+
+        let mut req_packet = Packet::new(Code::AccessRequest, secret.as_bytes());
+        rfc2865::add_user_name(&mut req_packet, user);
+        rfc2865::add_user_password(&mut req_packet, password.as_bytes()).unwrap();
+
+        let client = Client::new(Some(Duration::from_secs(3)), Some(Duration::from_secs(5)));
+        let res = client.send_packet(&remote_addr, &req_packet).await;
+        info!("response: {:?}", res);
+        return;
+    }
 
     let handler = MyRequestHandler { hmac, len: pwd_len };
     let secret = MySecretProvider { secret };
