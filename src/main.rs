@@ -90,6 +90,22 @@ async fn main() {
                 .env("DUMB_RADIUS_PWD_LEN")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("acct_port")
+                .short("a")
+                .long("acct-port")
+                .help("radius accounting port")
+                .default_value("1813")
+                .env("DUMB_RADIUS_ACCT_PORT")
+                .validator(|s| {
+                    if s.parse::<u16>().is_ok() {
+                        Ok(())
+                    } else {
+                        Err("port must be a number".to_string())
+                    }
+                })
+                .takes_value(true),
+        )
         .subcommand(
             App::new("genpwd")
                 .about("generate passwords for testing")
@@ -142,6 +158,7 @@ async fn main() {
     let hmac = HmacSha256::new_from_slice(pwd_key.as_bytes()).expect("HMAC init");
     let bind = args.value_of("bind").unwrap();
     let port = args.value_of("port").unwrap().parse().unwrap();
+    let acct_port = args.value_of("acct_port").unwrap().parse().unwrap();
     let secret = args.value_of("secret").unwrap().to_string();
 
     if let Some(m) = args.subcommand_matches("genpwd") {
@@ -179,6 +196,29 @@ async fn main() {
     let handler = MyRequestHandler { hmac, len: pwd_len };
     let secret = MySecretProvider { secret };
 
+    if acct_port > 0 {
+        let secret = secret.clone();
+        let bind = bind.to_string();
+        tokio::spawn(async move {
+            let acct_handler = AcctRequestHandler;
+            let mut server = Server::listen(&bind, acct_port, acct_handler, secret)
+                .await
+                .unwrap();
+            server.set_buffer_size(1500); // default value: 1500
+            server.set_skip_authenticity_validation(false); // default value: false
+
+            // once it has reached here, a RADIUS server is now ready
+            info!(
+                "acct_server is now ready: {}",
+                server.get_listen_address().unwrap()
+            );
+            let result = server.run(signal::ctrl_c()).await;
+            info!("acct_server finished: {:?}", result);
+            if result.is_err() {
+                process::exit(1);
+            }
+        });
+    }
     // start UDP listening
     let mut server = Server::listen(bind, port, handler, secret).await.unwrap();
     server.set_buffer_size(1500); // default value: 1500
@@ -195,6 +235,28 @@ async fn main() {
     info!("Server finished: {:?}", result);
     if result.is_err() {
         process::exit(1);
+    }
+}
+
+struct AcctRequestHandler;
+
+#[async_trait]
+impl RequestHandler<(), io::Error> for AcctRequestHandler {
+    async fn handle_radius_request(
+        &self,
+        conn: &UdpSocket,
+        req: &Request,
+    ) -> Result<(), io::Error> {
+        let req_packet = req.get_packet();
+        let code = Code::AccountingResponse;
+        info!("Accounting-Request received: {:?}", req_packet);
+        info!("response => {:?} to {}", code, req.get_remote_addr());
+        conn.send_to(
+            &req_packet.make_response_packet(code).encode().unwrap(),
+            req.get_remote_addr(),
+        )
+        .await?;
+        Ok(())
     }
 }
 
@@ -236,6 +298,7 @@ impl RequestHandler<(), io::Error> for MyRequestHandler {
     }
 }
 
+#[derive(Clone)]
 struct MySecretProvider {
     secret: String,
 }
