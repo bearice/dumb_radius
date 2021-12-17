@@ -3,7 +3,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{io, process};
 
 use async_trait::async_trait;
-use clap::{App, Arg};
+use clap::{App, Arg, ArgMatches};
 use hmac::*;
 use log::info;
 use radius::client::Client;
@@ -148,6 +148,24 @@ async fn main() {
                         .takes_value(true),
                 ),
         )
+        .subcommand(
+            App::new("verify")
+                .about("verify username and password")
+                .arg(
+                    Arg::with_name("user")
+                        .short("u")
+                        .help("user name")
+                        .required(true)
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("pass")
+                        .short("P")
+                        .help("password")
+                        .required(true)
+                        .takes_value(true),
+                ),
+        )
         .get_matches();
 
     let log_level = args.value_of("log-level").unwrap_or("info");
@@ -162,35 +180,15 @@ async fn main() {
     let secret = args.value_of("secret").unwrap().to_string();
 
     if let Some(m) = args.subcommand_matches("genpwd") {
-        let user = m.value_of("user").expect("user not defined");
-        let expires = m.value_of("expires").and_then(parse_duration);
-        let ts = get_ts(expires);
-        let pwd = genpwd(hmac, pwd_len, user, ts);
-        println!("User: {}\r\nPassword: {}", user, pwd);
-        return;
+        return cmd_genpwd(m, hmac, pwd_len);
     }
 
     if let Some(m) = args.subcommand_matches("test") {
-        let user = m.value_of("user").expect("user not defined");
-        let password = m
-            .value_of("pass")
-            .map(ToOwned::to_owned)
-            .unwrap_or_else(|| {
-                genpwd(hmac, pwd_len, user, get_ts(Some(Duration::from_secs(3600))))
-            });
+        return cmd_test(m, hmac, pwd_len, secret).await;
+    }
 
-        println!("User: {}\r\nPassword: {}", user, password);
-
-        let remote_addr: SocketAddr = m.value_of("remote").unwrap().parse().unwrap();
-
-        let mut req_packet = Packet::new(Code::AccessRequest, secret.as_bytes());
-        rfc2865::add_user_name(&mut req_packet, user);
-        rfc2865::add_user_password(&mut req_packet, password.as_bytes()).unwrap();
-
-        let client = Client::new(Some(Duration::from_secs(3)), Some(Duration::from_secs(5)));
-        let res = client.send_packet(&remote_addr, &req_packet).await;
-        info!("response: {:?}", res);
-        return;
+    if let Some(m) = args.subcommand_matches("verify") {
+        return cmd_verify(m, hmac, pwd_len);
     }
 
     let handler = MyRequestHandler { hmac, len: pwd_len };
@@ -204,38 +202,57 @@ async fn main() {
             let mut server = Server::listen(&bind, acct_port, acct_handler, secret)
                 .await
                 .unwrap();
-            server.set_buffer_size(1500); // default value: 1500
-            server.set_skip_authenticity_validation(false); // default value: false
-
-            // once it has reached here, a RADIUS server is now ready
             info!(
-                "acct_server is now ready: {}",
+                "acct_server ready: {}",
                 server.get_listen_address().unwrap()
             );
             let result = server.run(signal::ctrl_c()).await;
             info!("acct_server finished: {:?}", result);
-            if result.is_err() {
-                process::exit(1);
-            }
         });
     }
+
     // start UDP listening
     let mut server = Server::listen(bind, port, handler, secret).await.unwrap();
-    server.set_buffer_size(1500); // default value: 1500
-    server.set_skip_authenticity_validation(false); // default value: false
-
-    // once it has reached here, a RADIUS server is now ready
-    info!(
-        "serve is now ready: {}",
-        server.get_listen_address().unwrap()
-    );
-
-    // start the loop to handle the RADIUS requests
+    info!("server ready: {}", server.get_listen_address().unwrap());
     let result = server.run(signal::ctrl_c()).await;
-    info!("Server finished: {:?}", result);
+    info!("server finished: {:?}", result);
     if result.is_err() {
         process::exit(1);
     }
+}
+
+fn cmd_verify(m: &ArgMatches<'_>, hmac: HmacSha256, pwd_len: usize) {
+    let user = m.value_of("user").expect("user not defined");
+    let password = m.value_of("pass").expect("password not defined");
+    if verify_pwd(hmac, pwd_len, user, password) {
+        process::exit(0);
+    } else {
+        process::exit(1);
+    }
+}
+
+async fn cmd_test(m: &ArgMatches<'_>, hmac: HmacSha256, pwd_len: usize, secret: String) {
+    let user = m.value_of("user").expect("user not defined");
+    let password = m
+        .value_of("pass")
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| genpwd(hmac, pwd_len, user, get_ts(Some(Duration::from_secs(3600)))));
+    println!("User: {}\r\nPassword: {}", user, password);
+    let remote_addr: SocketAddr = m.value_of("remote").unwrap().parse().unwrap();
+    let mut req_packet = Packet::new(Code::AccessRequest, secret.as_bytes());
+    rfc2865::add_user_name(&mut req_packet, user);
+    rfc2865::add_user_password(&mut req_packet, password.as_bytes()).unwrap();
+    let client = Client::new(Some(Duration::from_secs(3)), Some(Duration::from_secs(5)));
+    let res = client.send_packet(&remote_addr, &req_packet).await;
+    info!("response: {:?}", res);
+}
+
+fn cmd_genpwd(m: &ArgMatches, hmac: HmacSha256, pwd_len: usize) {
+    let user = m.value_of("user").expect("user not defined");
+    let expires = m.value_of("expires").and_then(parse_duration);
+    let ts = get_ts(expires);
+    let pwd = genpwd(hmac, pwd_len, user, ts);
+    println!("User: {}\r\nPassword: {}", user, pwd);
 }
 
 struct AcctRequestHandler;
