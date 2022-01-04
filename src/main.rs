@@ -25,8 +25,8 @@ async fn main() {
     let args = App::new(env!("CARGO_BIN_NAME"))
         .version(VERSION)
         .arg(
-            Arg::with_name("bind")
-                .short("b")
+            Arg::new("bind")
+                .short('b')
                 .long("bind")
                 .help("radius bind address")
                 .default_value("0.0.0.0")
@@ -41,8 +41,8 @@ async fn main() {
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("port")
-                .short("p")
+            Arg::new("port")
+                .short('p')
                 .long("port")
                 .validator(|s| {
                     if s.parse::<u16>().is_ok() {
@@ -57,8 +57,8 @@ async fn main() {
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("secret")
-                .short("s")
+            Arg::new("secret")
+                .short('s')
                 .long("secret")
                 .help("radius secret")
                 .default_value("12345678")
@@ -66,8 +66,8 @@ async fn main() {
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("pwd_key")
-                .short("k")
+            Arg::new("pwd_key")
+                .short('k')
                 .long("key")
                 .help("password key")
                 .default_value("whosyourdaddy")
@@ -75,8 +75,8 @@ async fn main() {
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("pwd_len")
-                .short("l")
+            Arg::new("pwd_len")
+                .short('l')
                 .long("len")
                 .help("password length")
                 .default_value("32")
@@ -91,8 +91,8 @@ async fn main() {
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("acct_port")
-                .short("a")
+            Arg::new("acct_port")
+                .short('a')
                 .long("acct-port")
                 .help("radius accounting port")
                 .default_value("1813")
@@ -110,15 +110,15 @@ async fn main() {
             App::new("genpwd")
                 .about("generate passwords for testing")
                 .arg(
-                    Arg::with_name("expires")
-                        .short("e")
+                    Arg::new("expires")
+                        .short('e')
                         .help("password expires time")
                         .default_value("30d")
                         .takes_value(true),
                 )
                 .arg(
-                    Arg::with_name("user")
-                        .short("u")
+                    Arg::new("user")
+                        .short('u')
                         .help("user name")
                         .default_value("test")
                         .takes_value(true),
@@ -128,21 +128,21 @@ async fn main() {
             App::new("test")
                 .about("test remote server")
                 .arg(
-                    Arg::with_name("user")
-                        .short("u")
+                    Arg::new("user")
+                        .short('u')
                         .help("user name")
                         .default_value("test")
                         .takes_value(true),
                 )
                 .arg(
-                    Arg::with_name("pass")
-                        .short("P")
+                    Arg::new("pass")
+                        .short('P')
                         .help("password (default: auto generate)")
                         .takes_value(true),
                 )
                 .arg(
-                    Arg::with_name("remote")
-                        .short("r")
+                    Arg::new("remote")
+                        .short('r')
                         .help("remote server")
                         .default_value("127.0.0.1:1812")
                         .takes_value(true),
@@ -152,15 +152,15 @@ async fn main() {
             App::new("verify")
                 .about("verify username and password")
                 .arg(
-                    Arg::with_name("user")
-                        .short("u")
+                    Arg::new("user")
+                        .short('u')
                         .help("user name")
                         .required(true)
                         .takes_value(true),
                 )
                 .arg(
-                    Arg::with_name("pass")
-                        .short("P")
+                    Arg::new("pass")
+                        .short('P')
                         .help("password")
                         .required(true)
                         .takes_value(true),
