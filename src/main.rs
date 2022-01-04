@@ -221,7 +221,7 @@ async fn main() {
     }
 }
 
-fn cmd_verify(m: &ArgMatches<'_>, hmac: HmacSha256, pwd_len: usize) {
+fn cmd_verify(m: &ArgMatches, hmac: HmacSha256, pwd_len: usize) {
     let user = m.value_of("user").expect("user not defined");
     let password = m.value_of("pass").expect("password not defined");
     if verify_pwd(hmac, pwd_len, user, password) {
@@ -231,7 +231,7 @@ fn cmd_verify(m: &ArgMatches<'_>, hmac: HmacSha256, pwd_len: usize) {
     }
 }
 
-async fn cmd_test(m: &ArgMatches<'_>, hmac: HmacSha256, pwd_len: usize, secret: String) {
+async fn cmd_test(m: &ArgMatches, hmac: HmacSha256, pwd_len: usize, secret: String) {
     let user = m.value_of("user").expect("user not defined");
     let password = m
         .value_of("pass")
