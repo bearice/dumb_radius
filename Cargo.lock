@@ -415,9 +415,9 @@ dependencies = [
 
 [[package]]
 name = "radius"
-version = "0.2.1"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78ea076943c95a83a2724ebd97c30fa6173fcbe98a0c6517842d8935a320fc74"
+checksum = "dec0d7676c01b3eee6f9c457935b1888e051d661f77dc7a38b6af91386e9927d"
 dependencies = [
  "async-trait",
  "chrono",
